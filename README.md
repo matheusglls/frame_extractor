@@ -4,8 +4,6 @@ A browser-based tool for extracting high-quality still frames from behavioral vi
 
 The tool was designed for workflows in which the raw video starts before the actual behavioral test. You can define the experimental **T0**, create one or more capture windows, choose a frame interval, and export consistently named images for downstream manual analysis.
 
-No FFmpeg installation, executable renaming, PowerShell command, or backend server is required for normal use.
-
 ## Main features
 
 - Open large local video files directly in the browser
