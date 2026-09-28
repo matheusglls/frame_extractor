@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Browser-based high-quality frame extractor for behavioral videos using experiment-relative timestamps." />
+  <title>Behavioral Video Frame Extractor</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Behavioral Video Frame Extractor</h1>
+      <p class="sub">
+        Extract high-quality still frames from behavioral videos using experiment-relative timestamps.
+        No FFmpeg or PowerShell required.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>1. Experiment information</h2>
+      <div class="form-grid">
+        <div class="group">
+          <label for="researcher">Researcher</label>
+          <input id="researcher" placeholder="Initials or ID" />
+        </div>
+        <div class="group">
+          <label for="videoId">Video ID</label>
+          <input id="videoId" placeholder="e.g., CTRL_01" />
+        </div>
+        <div class="group">
+          <label for="tankId">Tank / group</label>
+          <input id="tankId" placeholder="e.g., Tank 03" />
+        </div>
+        <div class="group">
+          <label for="animalCount">Number of animals</label>
+          <input id="animalCount" type="number" min="1" step="1" placeholder="e.g., 4" />
+        </div>
+        <div class="group full">
+          <label for="notes">Notes</label>
+          <input id="notes" placeholder="Optional notes" />
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>2. Open video and define experimental T0</h2>
+
+      <div class="toolbar">
+        <button id="openVideoBtn" class="primary">Open video…</button>
+        <input id="videoInput" type="file" accept="video/*" hidden />
+        <span id="videoFileName" class="muted">No video selected</span>
+      </div>
+
+      <div id="dropzone" class="video-wrap" tabindex="0" aria-label="Video drop area">
+        <video id="video" controls preload="metadata"></video>
+        <div id="emptyVideoMessage" class="empty-video">
+          Drop a video here or click <strong>Open video…</strong>
+        </div>
+      </div>
+
+      <div class="time-grid">
+        <div class="time-card">
+          <span class="time-label">Video time</span>
+          <strong id="videoTime">00:00:00.000</strong>
+        </div>
+        <div class="time-card accent-card">
+          <span class="time-label">Experimental time</span>
+          <strong id="experimentalTime">T0 not set</strong>
+        </div>
+        <div class="time-card">
+          <span class="time-label">Video duration</span>
+          <strong id="videoDuration">—</strong>
+        </div>
+        <div class="time-card">
+          <span class="time-label">T0 in video</span>
+          <strong id="t0Display">—</strong>
+        </div>
+      </div>
+
+      <div class="toolbar wrap">
+        <button id="back1Btn" title="Move 1 second backward">−1 s</button>
+        <button id="forward1Btn" title="Move 1 second forward">+1 s</button>
+        <button id="backFrameBtn" title="Approximate one frame backward">−1 frame</button>
+        <button id="forwardFrameBtn" title="Approximate one frame forward">+1 frame</button>
+        <label class="inline-field">
+          Frame step (fps)
+          <input id="fpsInput" type="number" min="1" max="240" step="0.001" value="30" />
+        </label>
+      </div>
+
+      <div class="toolbar wrap">
+        <button id="setT0Btn" class="primary">Set current time as T0</button>
+        <button id="goT0Btn">Go to T0</button>
+        <button id="resetT0Btn">Reset T0</button>
+        <button id="setRecordingEndBtn">Set current time as recording end</button>
+        <button id="clearRecordingEndBtn">Clear recording end</button>
+        <span class="status-line">
+          Recording end: <strong id="recordingEndDisplay">video end</strong>
+        </span>
+      </div>
+
+      <p class="hint">
+        T0 should be the instant when the experimental period begins (for example, when all animals have entered the tank).
+        Capture-window times below are expressed relative to this T0.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>3. Capture windows</h2>
+      <p class="hint">
+        Add one or more experimental-time windows. Example for a 1-hour recording:
+        00:00–05:00, 30:00–35:00 and 50:00–55:00.
+      </p>
+
+      <div class="table-wrap">
+        <table id="windowsTable">
+          <thead>
+            <tr>
+              <th>Window</th>
+              <th>Start (experimental time)</th>
+              <th>End (experimental time)</th>
+              <th>Preview</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="windowsBody"></tbody>
+        </table>
+      </div>
+
+      <div class="toolbar">
+        <button id="addWindowBtn">+ Add capture window</button>
+        <button id="loadExampleWindowsBtn" title="Loads 00:00–05:00, 30:00–35:00 and 50:00–55:00">
+          Load 1-hour example
+        </button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>4. Extraction settings</h2>
+
+      <div class="form-grid">
+        <div class="group">
+          <label for="intervalInput">Capture every</label>
+          <div class="input-suffix">
+            <input id="intervalInput" type="number" min="0.001" step="0.001" value="15" />
+            <span>seconds</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="formatSelect">Image format</label>
+          <select id="formatSelect">
+            <option value="png" selected>PNG (lossless)</option>
+            <option value="jpg">JPEG</option>
+          </select>
+        </div>
+
+        <div class="group" id="jpegQualityGroup" hidden>
+          <label for="jpegQuality">JPEG quality</label>
+          <div class="input-suffix">
+            <input id="jpegQuality" type="number" min="50" max="100" step="1" value="95" />
+            <span>%</span>
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="filenameMode">Filename timestamp</label>
+          <select id="filenameMode">
+            <option value="hms" selected>00h_00m_15s</option>
+            <option value="compact">00-00-15</option>
+            <option value="seconds">15.000s</option>
+          </select>
+        </div>
+
+        <div class="group full check-row">
+          <label><input id="includeVideoId" type="checkbox" checked /> Include Video ID in filename</label>
+          <label><input id="overlayTimer" type="checkbox" /> Burn experimental timer into each image</label>
+          <label><input id="includeWindowLabel" type="checkbox" /> Include window number in filename</label>
+        </div>
+      </div>
+
+      <div class="summary-box">
+        <div><span>Source resolution</span><strong id="sourceResolution">—</strong></div>
+        <div><span>Frames to generate</span><strong id="frameCount">—</strong></div>
+        <div><span>Estimated uncompressed pixels</span><strong id="pixelEstimate">—</strong></div>
+      </div>
+
+      <div id="validationBox" class="validation-box" aria-live="polite"></div>
+    </section>
+
+    <section class="panel">
+      <h2>5. Export</h2>
+
+      <div class="toolbar wrap">
+        <button id="chooseFolderBtn">Choose output folder</button>
+        <span id="folderStatus" class="muted">No folder selected</span>
+      </div>
+
+      <div class="toolbar wrap">
+        <button id="extractFolderBtn" class="primary" disabled>Extract to selected folder</button>
+        <button id="extractZipBtn" class="primary" disabled>Extract and download ZIP</button>
+        <button id="cancelBtn" disabled>Cancel</button>
+      </div>
+
+      <div class="progress-shell" aria-label="Extraction progress">
+        <div id="progressBar" class="progress-bar" style="width:0%"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progressText">Ready.</span>
+        <span id="progressPercent">0%</span>
+      </div>
+
+      <details class="log-box">
+        <summary>Extraction log</summary>
+        <pre id="logOutput"></pre>
+      </details>
+
+      <p class="hint">
+        Direct folder saving uses the browser's File System Access API and works best in current desktop Chrome/Edge on HTTPS or localhost.
+        ZIP download is available as a fallback and requires no external library.
+      </p>
+    </section>
+
+    <section class="panel">
+      <h2>How the timestamps work</h2>
+      <div class="example-grid">
+        <div><strong>Video time</strong><span>00:01:22</span><small>Set as T0</small></div>
+        <div class="arrow">→</div>
+        <div><strong>Experimental time</strong><span>00:00:00</span></div>
+        <div><strong>Video time</strong><span>00:01:37</span></div>
+        <div class="arrow">→</div>
+        <div><strong>Experimental time</strong><span>00:00:15</span></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      The extracted frame keeps the source video's decoded pixel dimensions. For critical frame-perfect work,
+      validate the browser output against the original recording and consider a dedicated FFmpeg-based workflow.
+    </p>
+    <p>© 2026 Matheus Gallas-Lopes — Licensed under CC BY-NC 4.0.</p>
+  </footer>
+
+  <canvas id="captureCanvas" hidden></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
