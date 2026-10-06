@@ -25,7 +25,7 @@ const back1Btn = $('back1Btn');
 const forward1Btn = $('forward1Btn');
 const backFrameBtn = $('backFrameBtn');
 const forwardFrameBtn = $('forwardFrameBtn');
-const fpsInput = $('fpsInput');
+const fpsStatus = $('fpsStatus');
 const setT0Btn = $('setT0Btn');
 const goT0Btn = $('goT0Btn');
 const resetT0Btn = $('resetT0Btn');
@@ -71,6 +71,9 @@ let outputDirectoryHandle = null;
 let windowCounter = 0;
 let extractionCancelled = false;
 let extractionRunning = false;
+let detectedFps = null;
+let previousPresentedFrame = null;
+let frameRateSamples = [];
 
 const TIME_EPSILON = 0.0005;
 
@@ -220,6 +223,10 @@ function loadVideoFile(file) {
   if (videoUrl) URL.revokeObjectURL(videoUrl);
 
   sourceFile = file;
+  detectedFps = null;
+  previousPresentedFrame = null;
+  frameRateSamples = [];
+  updateFrameRateLabel();
   videoUrl = URL.createObjectURL(file);
   video.src = videoUrl;
   video.classList.add('loaded');
@@ -252,6 +259,58 @@ video.addEventListener('error', () => {
   showValidation('error', 'The browser could not decode this video. Try a browser-supported MP4/H.264 file or transcode the source first.');
 });
 
+// Estimate the source frame rate from decoded frame timestamps while playing.
+// HTMLVideoElement does not expose an exact source-FPS property.
+function updateFrameRateLabel() {
+  if (detectedFps != null) {
+    fpsStatus.textContent = `Frame rate: ~${detectedFps.toFixed(2)} fps (automatic estimate)`;
+  } else if ('requestVideoFrameCallback' in video) {
+    fpsStatus.textContent = 'Frame rate: play video to detect (30 fps assumed until then)';
+  } else {
+    fpsStatus.textContent = 'Frame rate: ~30 fps (detection unavailable)';
+  }
+}
+
+function observeVideoFrame(_now, metadata) {
+  if (sourceFile && !video.paused && !video.seeking && !extractionRunning) {
+    if (previousPresentedFrame) {
+      const elapsed = metadata.mediaTime - previousPresentedFrame.mediaTime;
+      const frames = metadata.presentedFrames - previousPresentedFrame.presentedFrames;
+      if (elapsed > 0 && elapsed < 0.5 && frames > 0) {
+        const fps = frames / elapsed;
+        if (fps >= 10 && fps <= 240) {
+          frameRateSamples.push(fps);
+          if (frameRateSamples.length > 40) frameRateSamples.shift();
+          if (frameRateSamples.length >= 8) {
+            // Use the upper middle of the estimates to tolerate occasional skipped frames.
+            const sorted = [...frameRateSamples].sort((a, b) => a - b);
+            const estimate = sorted[Math.floor(sorted.length * 0.7)];
+            const commonFps = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120];
+            const match = commonFps.find(candidate => Math.abs(estimate - candidate) / candidate < 0.008);
+            const result = match ?? estimate;
+            if (detectedFps == null || Math.abs(detectedFps - result) > 0.01) {
+              detectedFps = result;
+              updateFrameRateLabel();
+            }
+          }
+        }
+      }
+    }
+    previousPresentedFrame = {
+      mediaTime: metadata.mediaTime,
+      presentedFrames: metadata.presentedFrames
+    };
+  } else {
+    previousPresentedFrame = null;
+  }
+  video.requestVideoFrameCallback(observeVideoFrame);
+}
+
+if ('requestVideoFrameCallback' in video) {
+  video.requestVideoFrameCallback(observeVideoFrame);
+}
+updateFrameRateLabel();
+
 // ---------- Video controls ----------
 
 function clampVideoTime(value) {
@@ -268,12 +327,12 @@ back1Btn.addEventListener('click', () => moveVideo(-1));
 forward1Btn.addEventListener('click', () => moveVideo(1));
 
 backFrameBtn.addEventListener('click', () => {
-  const fps = Math.max(1, Number(fpsInput.value) || 30);
+  const fps = detectedFps || 30;
   moveVideo(-1 / fps);
 });
 
 forwardFrameBtn.addEventListener('click', () => {
-  const fps = Math.max(1, Number(fpsInput.value) || 30);
+  const fps = detectedFps || 30;
   moveVideo(1 / fps);
 });
 
@@ -367,8 +426,8 @@ addWindowBtn.addEventListener('click', () => addWindow());
 loadExampleWindowsBtn.addEventListener('click', () => {
   clearWindows();
   addWindow('00:00', '05:00');
-  addWindow('30:00', '35:00');
-  addWindow('50:00', '55:00');
+  addWindow('20:00', '25:00');
+  addWindow('40:00', '45:00');
   updateAll();
 });
 
